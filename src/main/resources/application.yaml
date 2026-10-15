@@ -25,3 +25,8 @@ spring:
 
 server:
   port: ${PORT:8080}
+
+academic-mock:
+  cantidad-estudiantes: ${ACADEMIC_MOCK_CANTIDAD_ESTUDIANTES:12000}
+  prefijo-codigo: ${ACADEMIC_MOCK_PREFIJO_CODIGO:2024}
+  latencia-ms: ${ACADEMIC_MOCK_LATENCIA_MS:0}
