@@ -1,10 +1,9 @@
-package com.universidad.votaciones.controller;
+package com.universidad.votaciones.voting;
 
 public class VotoRequestDTO {
     private String idEstudiante;
     private String idCandidato;
 
-    // Getters y Setters
     public String getIdEstudiante() {
         return idEstudiante;
     }

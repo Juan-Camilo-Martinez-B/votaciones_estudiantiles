@@ -1,4 +1,4 @@
-package com.universidad.votaciones.controller;
+package com.universidad.votaciones.voting;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,6 @@ public class VotacionController {
             return ResponseEntity.badRequest().body("La llave de idempotencia (X-Idempotency-Key) es obligatoria.");
         }
 
-        // TODO: Aquí se conectará con el servicio del Módulo 2 (Juan Camilo)
         return ResponseEntity.ok("Voto registrado con éxito para el estudiante: " + votoRequest.getIdEstudiante() 
             + " bajo la llave: " + idempotencyKey);
     }
