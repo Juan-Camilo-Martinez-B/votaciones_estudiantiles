@@ -1,65 +1,33 @@
 spring:
-  application:
-    name: votaciones
-
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/votaciones_db}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    url: jdbc:postgresql://localhost:5432/votaciones_db
+    username: postgres
+    password: postgres
     driver-class-name: org.postgresql.Driver
-    # Configuración de HikariCP requerida por el ADR-001 para horas pico
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
-
+      max-lifetime: 1800000
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+      ddl-auto: update
     show-sql: true
-    open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
-  rabbitmq:
-    host: ${SPRING_RABBITMQ_HOST:localhost}
-    port: ${SPRING_RABBITMQ_PORT:5672}
-    username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_PASSWORD:guest}
-    # Configuración del contenedor de listeners para el Worker de Auditoría
-    listener:
-      simple:
-        # Número de consumidores concurrentes (mínimo y máximo)
-        concurrency: 2
-        max-concurrency: 5
-        # Número de mensajes pre-cargados por consumidor (control de flujo)
-        prefetch: 10
-        # Acknowledge automático al retornar sin excepción (NACK en excepción → DLQ)
-        acknowledge-mode: auto
-        # Reintentos antes de enviar a DLQ
-        default-requeue-rejected: false
-
-# ─── Configuración del módulo de Auditoría (Módulo 3) ─────────────────────────
-auditoria:
-  rabbitmq:
-    exchange: auditoria.exchange
-    queue: auditoria.cola
-    routing-key: auditoria.evento
-    dlq: auditoria.cola.dlq
-    dlx: auditoria.exchange.dlx
-
 server:
-  port: ${PORT:8080}
-
-academic-mock:
-  cantidad-estudiantes: ${ACADEMIC_MOCK_CANTIDAD_ESTUDIANTES:12000}
-  prefijo-codigo: ${ACADEMIC_MOCK_PREFIJO_CODIGO:2024}
-  latencia-ms: ${ACADEMIC_MOCK_LATENCIA_MS:0}
+  port: 8080
 
 management:
   endpoints:
     web:
       exposure:
-        include: health, info, metrics
+        include: health,metrics,info
