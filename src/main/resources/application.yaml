@@ -22,6 +22,27 @@ spring:
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
     password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    # Configuración del contenedor de listeners para el Worker de Auditoría
+    listener:
+      simple:
+        # Número de consumidores concurrentes (mínimo y máximo)
+        concurrency: 2
+        max-concurrency: 5
+        # Número de mensajes pre-cargados por consumidor (control de flujo)
+        prefetch: 10
+        # Acknowledge automático al retornar sin excepción (NACK en excepción → DLQ)
+        acknowledge-mode: auto
+        # Reintentos antes de enviar a DLQ
+        default-requeue-rejected: false
+
+# ─── Configuración del módulo de Auditoría (Módulo 3) ─────────────────────────
+auditoria:
+  rabbitmq:
+    exchange: auditoria.exchange
+    queue: auditoria.cola
+    routing-key: auditoria.evento
+    dlq: auditoria.cola.dlq
+    dlx: auditoria.exchange.dlx
 
 server:
   port: ${PORT:8080}
