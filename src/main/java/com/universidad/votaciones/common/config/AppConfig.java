@@ -1,4 +1,4 @@
-package com.universidad.votaciones.config;
+package com.universidad.votaciones.common.config;
 
 import org.springframework.context.annotation.Configuration;
 
