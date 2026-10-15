@@ -1,0 +1,88 @@
+services:
+  # ========================================================
+  # Base de Datos PostgreSQL
+  # ========================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: votaciones-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: votaciones_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d votaciones_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - votaciones-net
+
+  # ========================================================
+  # Broker de Mensajería RabbitMQ (Dependencia AMQP)
+  # ========================================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: votaciones-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"    # Puerto AMQP
+      - "15672:15672"  # Panel de administración Web (http://localhost:15672)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - votaciones-net
+
+  # ========================================================
+  # Aplicación Spring Boot (votaciones)
+  # ========================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: votaciones-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_APPLICATION_NAME: votaciones
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/votaciones_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+    networks:
+      - votaciones-net
+
+volumes:
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+
+networks:
+  votaciones-net:
+    driver: bridge

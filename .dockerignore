@@ -1,0 +1,12 @@
+.gradle/
+build/
+!build/libs/*.jar
+.git/
+.gitignore
+.gitattributes
+HELP.md
+out/
+.idea/
+*.iml
+.DS_Store
+*.log
