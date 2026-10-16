@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class VotingModuleTests {
 
     @Autowired
-    private VotingApi votingApi;
+    private VotacionApi votacionApi;
 
     @Autowired
     private PapeletaVotoRepository papeletaVotoRepository;
@@ -35,8 +35,8 @@ class VotingModuleTests {
     @BeforeEach
     void setUp() {
         // Inicializar candidatos en el tarjetón para las pruebas
-        votingApi.registrarCandidato("cand-1", "01", "Candidato A", "Propuesta de representación estudiantil");
-        votingApi.registrarCandidato("cand-2", "02", "Candidato B", "Propuesta de bienestar universitario");
+        votacionApi.registrarCandidato("cand-1", "01", "Candidato A", "Propuesta de representación estudiantil");
+        votacionApi.registrarCandidato("cand-2", "02", "Candidato B", "Propuesta de bienestar universitario");
     }
 
     @Test
@@ -46,7 +46,7 @@ class VotingModuleTests {
         String llaveIdempotencia = UUID.randomUUID().toString();
         EmitirVotoCommand command = new EmitirVotoCommand(llaveIdempotencia, idEstudiante, "cand-1");
 
-        VotoResult result = votingApi.emitirVoto(command);
+        VotoResult result = votacionApi.emitirVoto(command);
 
         assertNotNull(result);
         assertEquals("Voto registrado exitosamente.", result.mensaje());
@@ -56,17 +56,20 @@ class VotingModuleTests {
         assertFalse(result.esIdempotente());
 
         // Verificar que el estudiante queda registrado como que ya votó
-        assertTrue(votingApi.haVotado(idEstudiante));
+        assertTrue(votacionApi.haVotado(idEstudiante));
 
         // Verificar que la transacción de idempotencia existe
-        TransaccionVotoIdempotente tx = transaccionVotoRepository.findByLlaveIdempotencia(llaveIdempotencia).orElseThrow();
+        TransaccionVotoIdempotente tx = transaccionVotoRepository.findByLlaveIdempotencia(llaveIdempotencia)
+                .orElseThrow();
         assertEquals(idEstudiante, tx.getIdEstudiante());
         assertTrue(tx.esValida());
 
-        // Verificar que en la urna digital se depositó una papeleta anónima con el token técnico
+        // Verificar que en la urna digital se depositó una papeleta anónima con el
+        // token técnico
         List<PapeletaVoto> papeletas = papeletaVotoRepository.findAll();
         boolean papeletaExiste = papeletas.stream()
-                .anyMatch(p -> p.getTokenAnonimo().equals(result.tokenAnonimo()) && p.getIdCandidato().equals("cand-1"));
+                .anyMatch(
+                        p -> p.getTokenAnonimo().equals(result.tokenAnonimo()) && p.getIdCandidato().equals("cand-1"));
         assertTrue(papeletaExiste, "La papeleta anónima debe existir en la urna digital.");
     }
 
@@ -78,20 +81,23 @@ class VotingModuleTests {
         EmitirVotoCommand command = new EmitirVotoCommand(llaveIdempotencia, idEstudiante, "cand-2");
 
         // Primer envío
-        VotoResult primerResultado = votingApi.emitirVoto(command);
+        VotoResult primerResultado = votacionApi.emitirVoto(command);
         assertFalse(primerResultado.esIdempotente());
 
         long totalPapeletasAntes = papeletaVotoRepository.count();
 
-        // Segundo envío con la misma llave de idempotencia (simulación de doble click en frontend o retry)
-        VotoResult segundoResultado = votingApi.emitirVoto(command);
+        // Segundo envío con la misma llave de idempotencia (simulación de doble click
+        // en frontend o retry)
+        VotoResult segundoResultado = votacionApi.emitirVoto(command);
 
         assertTrue(segundoResultado.esIdempotente(), "La segunda llamada debe ser reconocida como idempotente.");
-        assertEquals(primerResultado.tokenAnonimo(), segundoResultado.tokenAnonimo(), "El token anónimo devuelto debe coincidir.");
+        assertEquals(primerResultado.tokenAnonimo(), segundoResultado.tokenAnonimo(),
+                "El token anónimo devuelto debe coincidir.");
         assertEquals(primerResultado.llaveIdempotencia(), segundoResultado.llaveIdempotencia());
 
         long totalPapeletasDespues = papeletaVotoRepository.count();
-        assertEquals(totalPapeletasAntes, totalPapeletasDespues, "NO se debe registrar un voto duplicado en la urna para la misma llave.");
+        assertEquals(totalPapeletasAntes, totalPapeletasDespues,
+                "NO se debe registrar un voto duplicado en la urna para la misma llave.");
     }
 
     @Test
@@ -101,13 +107,13 @@ class VotingModuleTests {
 
         // Primer voto válido
         String llave1 = UUID.randomUUID().toString();
-        votingApi.emitirVoto(new EmitirVotoCommand(llave1, idEstudiante, "cand-1"));
+        votacionApi.emitirVoto(new EmitirVotoCommand(llave1, idEstudiante, "cand-1"));
 
         // Segundo intento con otra llave distinta
         String llave2 = UUID.randomUUID().toString();
         EmitirVotoCommand intentoDuplicado = new EmitirVotoCommand(llave2, idEstudiante, "cand-2");
 
-        assertThrows(VotanteYaVotoException.class, () -> votingApi.emitirVoto(intentoDuplicado),
+        assertThrows(VotanteYaVotoException.class, () -> votacionApi.emitirVoto(intentoDuplicado),
                 "Debe lanzar VotanteYaVotoException si el estudiante ya votó.");
     }
 
@@ -115,15 +121,16 @@ class VotingModuleTests {
     @DisplayName("Debe rechazar el voto si el candidato no existe en el tarjetón")
     void testRechazarCandidatoInexistente() {
         String idEstudiante = "est-004";
-        EmitirVotoCommand command = new EmitirVotoCommand(UUID.randomUUID().toString(), idEstudiante, "cand-inexistente");
+        EmitirVotoCommand command = new EmitirVotoCommand(UUID.randomUUID().toString(), idEstudiante,
+                "cand-inexistente");
 
-        assertThrows(CandidatoNoEncontradoException.class, () -> votingApi.emitirVoto(command));
+        assertThrows(CandidatoNoEncontradoException.class, () -> votacionApi.emitirVoto(command));
     }
 
     @Test
     @DisplayName("Debe contabilizar correctamente los resultados anónimos de la urna")
     void testConteoUrna() {
-        ConteoVotosDto resultados = votingApi.obtenerResultadosUrna();
+        ConteoVotosDto resultados = votacionApi.obtenerResultadosUrna();
         assertNotNull(resultados);
         assertTrue(resultados.totalVotos() >= 0);
     }
