@@ -1,4 +1,4 @@
-package com.universidad.votaciones;
+package com.universidad.votaciones.common;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -10,18 +10,21 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Fachada pública oficial del Módulo 2: Motor de Votación e Idempotencia (Core Transaccional).
+ * Fachada pública oficial del Módulo 2: Motor de Votación e Idempotencia (Core
+ * Transaccional).
  * Diseñado y desarrollado para: Juan Camilo Martínez.
  *
- * Es la ÚNICA clase expuesta en la raíz del paquete voting para interactuar con otros módulos.
- * Todo el core de datos, repositorios, controladores y servicios reside encapsulado en la capa internal.
+ * Es la ÚNICA clase expuesta en la raíz del paquete voting para interactuar con
+ * otros módulos.
+ * Todo el core de datos, repositorios, controladores y servicios reside
+ * encapsulado en la capa internal.
  */
 @Component
-public class VotingApi {
+public class VotacionApi {
 
     private final VotacionInternalService votacionInternalService;
 
-    public VotingApi(VotacionInternalService votacionInternalService) {
+    public VotacionApi(VotacionInternalService votacionInternalService) {
         this.votacionInternalService = votacionInternalService;
     }
 
@@ -29,7 +32,8 @@ public class VotingApi {
      * Procesa la emisión de un voto aplicando llaves de idempotencia y depósito
      * anónimo en la urna digital.
      *
-     * @param command Comando con la llave de idempotencia, identificador del estudiante y candidato.
+     * @param command Comando con la llave de idempotencia, identificador del
+     *                estudiante y candidato.
      * @return Resultado del voto (procesado o respuesta idempotente).
      */
     public VotoResult emitirVoto(EmitirVotoCommand command) {
@@ -53,10 +57,10 @@ public class VotingApi {
     /**
      * Registra o da de alta un candidato para la elección.
      */
-    public CandidatoDto registrarCandidato(String idCandidato, String numeroTarjeton, String nombreCandidato, String propuestaResumen) {
+    public CandidatoDto registrarCandidato(String idCandidato, String numeroTarjeton, String nombreCandidato,
+            String propuestaResumen) {
         return votacionInternalService.registrarCandidato(
-                new CandidatoDto(idCandidato, numeroTarjeton, nombreCandidato, propuestaResumen)
-        );
+                new CandidatoDto(idCandidato, numeroTarjeton, nombreCandidato, propuestaResumen));
     }
 
     /**

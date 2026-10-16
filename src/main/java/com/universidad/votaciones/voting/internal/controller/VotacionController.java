@@ -1,6 +1,6 @@
 package com.universidad.votaciones.voting.internal.controller;
 
-import com.universidad.votaciones.voting.VotingApi;
+import com.universidad.votaciones.voting.VotacionApi;
 import com.universidad.votaciones.voting.internal.dto.CandidatoDto;
 import com.universidad.votaciones.voting.internal.dto.ConteoVotosDto;
 import com.universidad.votaciones.voting.internal.dto.EmitirVotoCommand;
@@ -25,23 +25,22 @@ import java.util.Map;
 @RequestMapping("/api/v1/votaciones")
 public class VotacionController {
 
-    private final VotingApi votingApi;
+    private final VotacionApi votacionApi;
 
-    public VotacionController(VotingApi votingApi) {
-        this.votingApi = votingApi;
+    public VotacionController(VotacionApi votacionApi) {
+        this.votacionApi = votacionApi;
     }
 
     public record VotarHttpPayload(
             String llaveIdempotencia,
             String idEstudiante,
-            String idCandidato
-    ) {}
+            String idCandidato) {
+    }
 
     @PostMapping("/votar")
     public ResponseEntity<VotoResult> votar(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
-            @RequestBody VotarHttpPayload payload
-    ) {
+            @RequestBody VotarHttpPayload payload) {
         String llave = (idempotencyKeyHeader != null && !idempotencyKeyHeader.isBlank())
                 ? idempotencyKeyHeader.trim()
                 : (payload.llaveIdempotencia() != null ? payload.llaveIdempotencia().trim() : null);
@@ -49,29 +48,27 @@ public class VotacionController {
         EmitirVotoCommand command = new EmitirVotoCommand(
                 llave,
                 payload.idEstudiante(),
-                payload.idCandidato()
-        );
+                payload.idCandidato());
 
-        VotoResult resultado = votingApi.emitirVoto(command);
+        VotoResult resultado = votacionApi.emitirVoto(command);
         return ResponseEntity.ok(resultado);
     }
 
     @GetMapping("/candidatos")
     public ResponseEntity<List<CandidatoDto>> listarCandidatos() {
-        return ResponseEntity.ok(votingApi.listarCandidatos());
+        return ResponseEntity.ok(votacionApi.listarCandidatos());
     }
 
     @GetMapping("/resultados")
     public ResponseEntity<ConteoVotosDto> obtenerResultados() {
-        return ResponseEntity.ok(votingApi.obtenerResultadosUrna());
+        return ResponseEntity.ok(votacionApi.obtenerResultadosUrna());
     }
 
     @GetMapping("/estudiante/{idEstudiante}/ha-votado")
     public ResponseEntity<Map<String, Object>> consultarSiHaVotado(@PathVariable String idEstudiante) {
-        boolean yaVoto = votingApi.haVotado(idEstudiante);
+        boolean yaVoto = votacionApi.haVotado(idEstudiante);
         return ResponseEntity.ok(Map.of(
                 "idEstudiante", idEstudiante,
-                "haVotado", yaVoto
-        ));
+                "haVotado", yaVoto));
     }
 }

@@ -1,4 +1,4 @@
-package com.universidad.votaciones.exception;
+package com.universidad.votaciones.common.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
