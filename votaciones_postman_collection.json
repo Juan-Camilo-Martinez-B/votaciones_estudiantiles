@@ -1,0 +1,635 @@
+{
+  "info": {
+    "_postman_id": "8e379b32-c64a-4d2b-98bc-76d3381a9951",
+    "name": "Sistema de Votaciones Estudiantiles - Monolito Modular E2E",
+    "description": "Colección completa de pruebas End-to-End para el Sistema de Votaciones Estudiantiles.\nCubre el flujo completo entre los módulos desacoplados (AcademicMock -> Auth -> Voting -> Audit).\n\nPara ejecutar:\n1. Asegúrese de que el contenedor de Docker esté arriba (`docker compose up -d`).\n2. Ejecute la colección en Postman con la opción 'Run collection'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "codigoEstudianteValido",
+      "value": "2024000001",
+      "type": "string"
+    },
+    {
+      "key": "idCandidatoSeleccionado",
+      "value": "candidato-1",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "postman-key-001",
+      "type": "string"
+    },
+    {
+      "key": "votanteId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Salud del Sistema",
+      "item": [
+        {
+          "name": "0.1 Verificar Salud de la Aplicación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"App status is UP\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql(\"UP\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            },
+            "description": "Verifica que el servicio Spring Boot y sus componentes (BD PostgreSQL, RabbitMQ) se encuentren en estado UP."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Módulo Censo Académico (AcademicMock)",
+      "item": [
+        {
+          "name": "1.1 Validar Estudiante en Censo Oficial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Estudiante está habilitado académicamente\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.habilitado).to.eql(true);",
+                  "    pm.expect(jsonData.codigoEstudiantil).to.eql(pm.collectionVariables.get(\"codigoEstudianteValido\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/academic/estudiantes/{{codigoEstudianteValido}}/validar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "academic", "estudiantes", "{{codigoEstudianteValido}}", "validar"]
+            },
+            "description": "Consulta el mock del sistema de registro académico para confirmar que el estudiante cumple con los requisitos para votar."
+          },
+          "response": []
+        },
+        {
+          "name": "1.2 Consultar Información Detallada del Estudiante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Retorna nombre y facultad del estudiante\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.nombreCompleto).to.not.be.empty;",
+                  "    pm.expect(jsonData.carrera).to.not.be.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/academic/estudiantes/{{codigoEstudianteValido}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "academic", "estudiantes", "{{codigoEstudianteValido}}"]
+            },
+            "description": "Obtiene la ficha académica completa del estudiante activo."
+          },
+          "response": []
+        },
+        {
+          "name": "1.3 Consultar Cantidad Total de Estudiantes Habilitados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"El censo tiene al menos 1 estudiante habilitado\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estudiantesHabilitados).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/academic/estudiantes/cantidad",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "academic", "estudiantes", "cantidad"]
+            },
+            "description": "Totaliza el censo oficial de estudiantes que pueden sufragar."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Módulo Autenticación y Usuarios (Auth)",
+      "item": [
+        {
+          "name": "2.1 Registrar Usuario Administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created or 409 Conflict if already exists\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.email).to.eql(\"admin@universidad.edu.co\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Carlos\",\n  \"apellido\": \"Administrador\",\n  \"email\": \"admin@universidad.edu.co\",\n  \"password\": \"AdminPassword123!\",\n  \"cargo\": \"Administrador Electoral General\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/administradores",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "administradores"]
+            },
+            "description": "Registra el administrador que gestionará el proceso y estados de los votantes."
+          },
+          "response": []
+        },
+        {
+          "name": "2.2 Registrar Votante Estudiante (Con Censo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created or 409 Conflict if already exists\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set(\"votanteId\", jsonData.id);",
+                  "    pm.expect(jsonData.codigoEstudiantil).to.eql(pm.collectionVariables.get(\"codigoEstudianteValido\"));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Perez\",\n  \"email\": \"juan.perez@universidad.edu.co\",\n  \"password\": \"VotanteSecure123!\",\n  \"codigoEstudiantil\": \"{{codigoEstudianteValido}}\",\n  \"programaAcademico\": \"Ingenieria de Sistemas\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/votantes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "votantes"]
+            },
+            "description": "Registra una cuenta de votante para el estudiante habilitado."
+          },
+          "response": []
+        },
+        {
+          "name": "2.3 Consultar Votante por Código Estudiantil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"votanteId\", jsonData.id);",
+                  "pm.test(\"Votante encontrado\", function () {",
+                  "    pm.expect(jsonData.codigoEstudiantil).to.eql(pm.collectionVariables.get(\"codigoEstudianteValido\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/votantes/codigo/{{codigoEstudianteValido}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "votantes", "codigo", "{{codigoEstudianteValido}}"]
+            },
+            "description": "Recupera la entidad del votante y guarda su ID para actualizar su estado."
+          },
+          "response": []
+        },
+        {
+          "name": "2.4 Habilitar Votante para Votación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"El estado cambia a HABILITADO\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"HABILITADO\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/votantes/{{votanteId}}/estado?estado=HABILITADO",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "votantes", "{{votanteId}}", "estado"],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "HABILITADO"
+                }
+              ]
+            },
+            "description": "El administrador habilita formalmente al votante para poder ejercer el voto."
+          },
+          "response": []
+        },
+        {
+          "name": "2.5 Verificar Bandera de Habilitación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"El votante figura como habilitado (true)\", function () {",
+                  "    pm.expect(pm.response.text()).to.eql(\"true\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/votantes/habilitado/{{codigoEstudianteValido}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "votantes", "habilitado", "{{codigoEstudianteValido}}"]
+            },
+            "description": "Verifica si el estudiante está listo para votar."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Módulo Proceso Electoral (Voting)",
+      "item": [
+        {
+          "name": "3.1 Listar Candidatos Oficiales",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Existe al menos un candidato en el tarjetón\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.length).to.be.above(0);",
+                  "    pm.collectionVariables.set(\"idCandidatoSeleccionado\", jsonData[0].id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/candidatos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "candidatos"]
+            },
+            "description": "Obtiene la lista de candidatos disponibles para elegir en la jornada electoral."
+          },
+          "response": []
+        },
+        {
+          "name": "3.2 Verificar que el Estudiante NO ha Votado Aún",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"haVotado es false\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.haVotado).to.eql(false);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/estudiante/{{codigoEstudianteValido}}/ha-votado",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "estudiante", "{{codigoEstudianteValido}}", "ha-votado"]
+            },
+            "description": "Comprueba en el registro del padrón electoral que el estudiante no tiene ningún voto emitido."
+          },
+          "response": []
+        },
+        {
+          "name": "3.3 Emitir Voto Válido con Idempotency-Key",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var randomKey = 'postman-key-' + Math.floor(Math.random() * 1000000);",
+                  "pm.collectionVariables.set(\"idempotencyKey\", randomKey);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Voto emitido con estado EMITIDO y hash anónimo generado\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"EMITIDO\");",
+                  "    pm.expect(jsonData.hashAnonimo).to.not.be.empty;",
+                  "    pm.collectionVariables.set(\"hashAnonimoRecibido\", jsonData.hashAnonimo);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"llaveIdempotencia\": \"{{idempotencyKey}}\",\n  \"idEstudiante\": \"{{codigoEstudianteValido}}\",\n  \"idCandidato\": \"{{idCandidatoSeleccionado}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/votar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "votar"]
+            },
+            "description": "Emite el voto. El módulo de votación valida contra AuthApi que el estudiante esté habilitado, y contra AcademicApi que siga activo en el censo. Se desacopla la identidad del votante respecto al tarjetón depositado y se audita."
+          },
+          "response": []
+        },
+        {
+          "name": "3.4 Reintentar Voto con Misma Llave (Idempotencia)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Responde YA_REGISTRADO con el mismo comprobante sin duplicar en la urna\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"YA_REGISTRADO\");",
+                  "    pm.expect(jsonData.hashAnonimo).to.eql(pm.collectionVariables.get(\"hashAnonimoRecibido\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"llaveIdempotencia\": \"{{idempotencyKey}}\",\n  \"idEstudiante\": \"{{codigoEstudianteValido}}\",\n  \"idCandidato\": \"{{idCandidatoSeleccionado}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/votar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "votar"]
+            },
+            "description": "Simula un reintento de red con la misma llave de idempotencia. Garantiza que la respuesta sea idéntica sin agregar votos extras."
+          },
+          "response": []
+        },
+        {
+          "name": "3.5 Intento de Fraude / Doble Voto (Rechazo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Intento de doble voto es rechazado (Status 409 o Error en respuesta)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 409]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "llave-nueva-intento-fraude-999"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"llaveIdempotencia\": \"llave-nueva-intento-fraude-999\",\n  \"idEstudiante\": \"{{codigoEstudianteValido}}\",\n  \"idCandidato\": \"{{idCandidatoSeleccionado}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/votar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "votar"]
+            },
+            "description": "El estudiante intenta emitir un segundo voto utilizando una clave de idempotencia diferente. El sistema rechaza la operación protegiendo la integridad electoral."
+          },
+          "response": []
+        },
+        {
+          "name": "3.6 Verificar que el Estudiante SÍ Figura como Votado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"haVotado es true\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.haVotado).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/estudiante/{{codigoEstudianteValido}}/ha-votado",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "estudiante", "{{codigoEstudianteValido}}", "ha-votado"]
+            },
+            "description": "Confirma que el estudiante quedó registrado en el padrón electoral como que ya participó."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Escrutinio y Urna Electoral (Resultados)",
+      "item": [
+        {
+          "name": "4.1 Consultar Escrutinio de la Urna Electrónica",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Total de votos en la urna es mayor a 0\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.totalVotos).to.be.above(0);",
+                  "    pm.expect(jsonData.desglosePorCandidato).to.be.an(\"object\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/resultados",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "resultados"]
+            },
+            "description": "Obtiene los resultados consolidados anónimos de la urna electrónica."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
