@@ -4,10 +4,10 @@ import java.time.Instant;
 
 public record RespuestaValidacionEstudiante(
         String codigoEstudiante,
-        boolean habilitado,
+        boolean habilitado, 
         EstadoHabilitacion estado,
         String mensaje,
-        Instant timestamp
+        Instant timestamp 
 ) {
 
     public static RespuestaValidacionEstudiante habilitado(String codigoEstudiante, EstadoHabilitacion estado) {
