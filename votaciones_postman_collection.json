@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "8e379b32-c64a-4d2b-98bc-76d3381a9951",
-    "name": "Sistema de Votaciones Estudiantiles - Monolito Modular E2E",
-    "description": "Colección completa de pruebas End-to-End para el Sistema de Votaciones Estudiantiles.\nCubre el flujo completo entre los módulos desacoplados (AcademicMock -> Auth -> Voting -> Audit).\n\nPara ejecutar:\n1. Asegúrese de que el contenedor de Docker esté arriba (`docker compose up -d`).\n2. Ejecute la colección en Postman con la opción 'Run collection'.",
+    "name": "Sistema de Votaciones Estudiantiles",
+    "description": "Colección del flujo electoral: censo académico, registro de usuarios, carga del padrón, jornada y voto.\n\nLa jornada solo puede iniciar entre las 08:00 y las 16:00.\n\nPara ejecutar:\n1. Levante las bases con `docker compose up -d` y la aplicación con el perfil postgres o mysql.\n2. Ejecute la colección en Postman con 'Run collection'.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -85,7 +85,7 @@
                   "pm.test(\"Estudiante está habilitado académicamente\", function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData.habilitado).to.eql(true);",
-                  "    pm.expect(jsonData.codigoEstudiantil).to.eql(pm.collectionVariables.get(\"codigoEstudianteValido\"));",
+                  "    pm.expect(jsonData.codigoEstudiante).to.eql(pm.collectionVariables.get(\"codigoEstudianteValido\"));",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -117,7 +117,7 @@
                   "pm.test(\"Retorna nombre y facultad del estudiante\", function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData.nombreCompleto).to.not.be.empty;",
-                  "    pm.expect(jsonData.carrera).to.not.be.empty;",
+                  "    pm.expect(jsonData.programaAcademico).to.not.be.empty;",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -179,8 +179,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 201 Created or 409 Conflict if already exists\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "pm.test(\"Status code is 201 Created or 400 if the email already exists\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
                   "});",
                   "if (pm.response.code === 201) {",
                   "    var jsonData = pm.response.json();",
@@ -219,8 +219,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 201 Created or 409 Conflict if already exists\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "pm.test(\"Status code is 201 Created or 400 if the email already exists\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
                   "});",
                   "if (pm.response.code === 201) {",
                   "    var jsonData = pm.response.json();",
@@ -297,7 +297,7 @@
                   "});",
                   "pm.test(\"El estado cambia a HABILITADO\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.estado).to.eql(\"HABILITADO\");",
+                  "    pm.expect(jsonData.estadoVotante).to.eql(\"HABILITADO\");",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -355,10 +355,103 @@
       ]
     },
     {
-      "name": "3. Módulo Proceso Electoral (Voting)",
+      "name": "3. Jornada, padrón y voto",
       "item": [
         {
-          "name": "3.1 Listar Candidatos Oficiales",
+          "name": "3.1 Cargar padrón desde el censo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Se cargaron estudiantes habilitados\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estudiantesCargados).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/padron/cargar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "padron", "cargar"]
+            },
+            "description": "Copia al padrón electoral los códigos habilitados del censo académico. Sin este paso el voto se rechaza."
+          },
+          "response": []
+        },
+        {
+          "name": "3.2 Iniciar jornada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La jornada queda abierta\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"ABIERTA\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/jornada/iniciar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "jornada", "iniciar"]
+            },
+            "description": "Abre la jornada del día. Solo tiene éxito entre las 08:00 y las 16:00, y no se puede reabrir si ya fue cerrada."
+          },
+          "response": []
+        },
+        {
+          "name": "3.3 Consultar jornada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"La jornada está abierta de 08:00 a 16:00\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"ABIERTA\");",
+                  "    pm.expect(jsonData.apertura).to.eql(\"08:00:00\");",
+                  "    pm.expect(jsonData.cierre).to.eql(\"16:00:00\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/jornada",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "jornada"]
+            },
+            "description": "Consulta el estado actual de la jornada electoral."
+          },
+          "response": []
+        },
+        {
+          "name": "3.4 Listar candidatos",
           "event": [
             {
               "listen": "test",
@@ -370,7 +463,7 @@
                   "pm.test(\"Existe al menos un candidato en el tarjetón\", function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData.length).to.be.above(0);",
-                  "    pm.collectionVariables.set(\"idCandidatoSeleccionado\", jsonData[0].id);",
+                  "    pm.collectionVariables.set(\"idCandidatoSeleccionado\", jsonData[0].idCandidato);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -440,11 +533,12 @@
                   "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Voto emitido con estado EMITIDO y hash anónimo generado\", function () {",
+                  "pm.test(\"Voto procesado con token anónimo\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.estado).to.eql(\"EMITIDO\");",
-                  "    pm.expect(jsonData.hashAnonimo).to.not.be.empty;",
-                  "    pm.collectionVariables.set(\"hashAnonimoRecibido\", jsonData.hashAnonimo);",
+                  "    pm.expect(jsonData.estado).to.eql(\"PROCESADO\");",
+                  "    pm.expect(jsonData.esIdempotente).to.eql(false);",
+                  "    pm.expect(jsonData.tokenAnonimo).to.not.be.empty;",
+                  "    pm.collectionVariables.set(\"tokenAnonimoRecibido\", jsonData.tokenAnonimo);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -486,10 +580,11 @@
                   "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Responde YA_REGISTRADO con el mismo comprobante sin duplicar en la urna\", function () {",
+                  "pm.test(\"Devuelve el mismo recibo sin depositar otro voto\", function () {",
                   "    var jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.estado).to.eql(\"YA_REGISTRADO\");",
-                  "    pm.expect(jsonData.hashAnonimo).to.eql(pm.collectionVariables.get(\"hashAnonimoRecibido\"));",
+                  "    pm.expect(jsonData.estado).to.eql(\"PROCESADO\");",
+                  "    pm.expect(jsonData.esIdempotente).to.eql(true);",
+                  "    pm.expect(jsonData.tokenAnonimo).to.eql(pm.collectionVariables.get(\"tokenAnonimoRecibido\"));",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -528,8 +623,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Intento de doble voto es rechazado (Status 409 o Error en respuesta)\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([400, 409]);",
+                  "pm.test(\"Intento de doble voto es rechazado con 409\", function () {",
+                  "    pm.response.to.have.status(409);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -610,7 +705,7 @@
                   "pm.test(\"Total de votos en la urna es mayor a 0\", function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData.totalVotos).to.be.above(0);",
-                  "    pm.expect(jsonData.desglosePorCandidato).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.votosPorCandidato).to.be.an(\"object\");",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -626,6 +721,35 @@
               "path": ["api", "v1", "votaciones", "resultados"]
             },
             "description": "Obtiene los resultados consolidados anónimos de la urna electrónica."
+          },
+          "response": []
+        },
+        {
+          "name": "4.2 Cerrar jornada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La jornada queda cerrada\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.estado).to.eql(\"CERRADA\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/votaciones/jornada/cerrar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "votaciones", "jornada", "cerrar"]
+            },
+            "description": "Cierra la jornada abierta. Una jornada cerrada no vuelve a abrirse."
           },
           "response": []
         }

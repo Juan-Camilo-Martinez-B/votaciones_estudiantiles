@@ -6,6 +6,7 @@ import com.universidad.votaciones.academicmock.model.RespuestaValidacionEstudian
 import com.universidad.votaciones.academicmock.service.RegistroAcademicoService;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -51,5 +52,14 @@ public class AcademicApi {
      */
     public long contarEstudiantesHabilitados() {
         return registroAcademicoService.contarEstudiantesHabilitados();
+    }
+
+    /**
+     * Lista los estudiantes habilitados del censo simulado para cargarlos al padrón electoral.
+     */
+    public List<EstudianteHabilitado> listarEstudiantesHabilitados() {
+        return registroAcademicoService.listarEstudiantes().stream()
+                .filter(estudiante -> estudiante.estado() == EstadoHabilitacion.HABILITADO)
+                .toList();
     }
 }

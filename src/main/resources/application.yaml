@@ -1,4 +1,36 @@
 spring:
+  application:
+    name: votaciones
+  profiles:
+    default: postgres
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info
+
+# El adaptador de persistencia de la votación cambia con el perfil:
+#   postgres -> JPA contra PostgreSQL
+#   mysql    -> JDBC contra MySQL
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
   datasource:
     url: jdbc:postgresql://localhost:5432/votaciones_db
     username: postgres
@@ -10,24 +42,21 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
   jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
-server:
-  port: 8080
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,metrics,info
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://localhost:3307/votaciones_db?createDatabaseIfNotExist=true
+    username: votaciones
+    password: votaciones
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect

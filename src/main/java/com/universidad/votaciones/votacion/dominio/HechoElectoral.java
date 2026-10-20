@@ -1,0 +1,16 @@
+package com.universidad.votaciones.votacion.dominio;
+
+public enum HechoElectoral {
+    VOTO_REGISTRADO,
+    VOTO_REINTENTO,
+    VOTO_DUPLICADO,
+    VOTO_RECHAZADO,
+    JORNADA_INICIADA,
+    JORNADA_CERRADA,
+    JORNADA_RECHAZADA,
+    PADRON_CARGADO,
+    CANDIDATO_REGISTRADO,
+    RESULTADOS_CONSULTADOS,
+    USUARIO_CREADO,
+    USUARIO_ACTUALIZADO
+}
