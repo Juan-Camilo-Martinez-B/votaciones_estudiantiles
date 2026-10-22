@@ -1,199 +1,302 @@
-# Sistema de Votaciones Estudiantiles - Monolito Modular Universitario
+# Sistema de Votaciones Estudiantiles
 
-Bienvenido al repositorio del **Sistema de Votaciones Estudiantiles**, una solución de software empresarial basada en una arquitectura de **Monolito Modular** construida sobre **Java 21** y **Spring Boot 3**.
+Sistema de elecciones universitarias en **Java 21** y **Spring Boot 4**, organizado con **arquitectura hexagonal**.
 
-El sistema garantiza elecciones universitarias seguras, auditables y transparentes aplicando principios fundamentales de:
-- **Secreto del Voto**: Desacoplamiento criptográfico total entre el votante y la papeleta depositada en la urna anónima.
-- **Idempotencia Transaccional**: Protección contra peticiones duplicadas o reintentos de red usando llaves `Idempotency-Key`.
-- **Prevención de Fraude**: Detección y rechazo de doble voto por estudiante en el padrón electoral.
-- **Trazabilidad Asíncrona**: Registro de eventos de auditoría mediante colas de mensajería **RabbitMQ** y base de datos relacional **PostgreSQL**.
+El hexágono es el paquete `votacion`. Adentro viven el dominio, los casos de uso y los adaptadores. Afuera queda `academicmock`, que simula el censo de la universidad. La votación lo consulta a través del puerto `CensoAcademico`.
+
+El perfil activo elige el adaptador de persistencia:
+
+- `postgres` (predeterminado): JPA contra PostgreSQL.
+- `mysql`: JDBC contra MySQL.
+
+Cambiar de base de datos deja intactos el dominio y los casos de uso.
 
 ---
 
-## 🏛️ Arquitectura del Monolito Modular y Fronteras de API
+## Arquitectura hexagonal
 
-El sistema está estructurado en 4 módulos de negocio independientes integrados armónicamente:
+Las dependencias apuntan hacia el centro. El dominio no importa Spring, JPA ni JDBC. Los servicios de aplicación dependen de puertos (interfaces). La infraestructura implementa esos puertos y es el único lugar donde aparecen el framework, las bases y RabbitMQ.
+
+```mermaid
+flowchart LR
+  HTTP["Adaptadores de entrada<br/>controladores"] --> UC["Casos de uso"]
+  UC --> DOM["Dominio"]
+  UC --> OUT["Puertos de salida"]
+  OUT --> PG["JPA / PostgreSQL"]
+  OUT --> MY["JDBC / MySQL"]
+  OUT --> CENSO["Censo académico"]
+  OUT --> AUD["Auditoría / RabbitMQ"]
+  OUT --> SEG["Argon2"]
+```
 
 ```
 src/main/java/com/universidad/votaciones/
-├── VotacionesApplication.java          # Punto de entrada y seeder de datos iniciales
-├── academicmock/                       # Módulo 1: Censo Académico Universitario
-│   ├── AcademicApi.java               # << Fachada Pública Oficial (API del Módulo) >>
-│   ├── controller/                     # Controladores HTTP del censo
-│   ├── model/                          # Modelos de datos del censo
-│   └── service/                        # Registro en memoria de 12.000 estudiantes
-├── auth/                               # Módulo 2: Autenticación, Usuarios y Padrón
-│   ├── AuthApi.java                   # << Fachada Pública Oficial (API del Módulo) >>
-│   ├── controller/                     # Endpoints de administradores y votantes
-│   ├── model/                          # Entidades JPA (Usuario, Votante, Administrador)
-│   ├── repository/                     # Repositorios JPA
-│   └── service/                        # Lógica de seguridad y contraseñas Argon2
-├── voting/                             # Módulo 3: Motor Transaccional de Votaciones
-│   ├── VotacionApi.java               # << Fachada Pública Oficial (API del Módulo) >>
-│   └── internal/                       # Capa interna estrictamente encapsulada
-│       ├── controller/                 # Endpoints REST de votación y tarjetón
-│       ├── dto/                        # Commands y DTOs
-│       ├── exception/                  # Excepciones de negocio y de concurrencia
-│       ├── model/                      # Papeletas anónimas y transacciones idempotentes
-│       ├── repository/                 # Urna electrónica y repositorio de votos
-│       └── service/                    # Lógica transaccional de depósito de votos
-└── audit/                              # Módulo 4: Auditoría y Trazabilidad Transaccional
-    ├── AuditApi.java                  # << Fachada Pública Oficial (API del Módulo) >>
-    ├── config/                         # Configuración de RabbitMQ (Exchanges, Queues, DLQ)
-    ├── controller/                     # Consulta de logs de auditoría
-    ├── model/                          # Entidad y enum de acciones de auditoría
-    ├── repository/                     # Repositorio JPA de eventos
-    └── service/                        # Consumidores AMQP y emisores asíncronos
+├── VotacionesApplication.java
+├── academicmock/                              # Sistema externo simulado
+└── votacion/
+    ├── dominio/
+    ├── aplicacion/
+    │   ├── puertos/entrada/                   # Casos de uso
+    │   ├── puertos/salida/                    # Lo que la aplicación necesita del mundo
+    │   └── servicios/                         # Implementan los casos de uso
+    └── infraestructura/
+        ├── entrada/                           # HTTP
+        ├── config/                            # VotacionConfig arma el hexágono
+        └── salida/
+            ├── jpa/                           # Perfil postgres
+            ├── mysql/                         # Perfil mysql
+            ├── censo/
+            ├── auditoria/
+            └── seguridad/
 ```
 
-### 🔒 Regla de Encapsulamiento Estricto
-Cada módulo encapsula internamente sus controladores, servicios, repositorios y entidades. Ningún módulo accede a las clases internas de otro.
-Toda interacción intermodular ocurre **única y exclusivamente** a través de las fachadas públicas situadas en la raíz de cada paquete:
-1. `AcademicApi`: Provee verificación del estado académico y existencia en el censo oficial.
-2. `AuthApi`: Valida si el estudiante tiene credenciales válidas y se encuentra en estado `HABILITADO`. Se conecta con `AcademicApi` y `AuditApi`.
-3. `VotacionApi`: Coordina la emisión de votos, comprueba que el votante esté habilitado (`AuthApi`), que continúe activo en el censo (`AcademicApi`), evita el doble voto, emite la papeleta anónima y notifica el evento al módulo de auditoría (`AuditApi`).
-4. `AuditApi`: Expone métodos de alto nivel (`registrarExito`, `registrarFallo`) para publicar eventos hacia RabbitMQ sin acoplar detalles de infraestructura.
+Los puertos son solo interfaces. `HechoElectoral`, `EstadoJornada` y `EstadoVotante` son enums del dominio.
+
+### Dominio
+
+Aquí están las reglas. `MesaDeVotacion` decide si un voto se acepta. `JornadaElectoral` decide si el día está abierto.
+
+- La jornada dura un día, de 08:00 a 16:00 inclusive. `iniciar` y `cerrar` son operaciones distintas. Una jornada `CERRADA` no vuelve a abrirse. Iniciar fuera de ese horario se rechaza. Un voto exige jornada `ABIERTA`, el mismo día calendario y una hora dentro de la ventana.
+- Cada estudiante vota una sola vez. Si llega la misma llave de idempotencia, `MesaDeVotacion` devuelve la participación ya registrada y no arma otra papeleta. Otra llave para el mismo estudiante lanza `VotanteYaVotoException`.
+- El voto es anónimo. `IntencionDeVoto` todavía conoce al estudiante y al candidato. El único camino a la urna es `privatizar`, que produce una `Papeleta` con el candidato y un identificador aleatorio. La `Participacion` guarda al estudiante, la llave y el recibo, y no conoce al candidato.
+- Sin el código del estudiante en el padrón cargado, el voto se rechaza.
+- `Votante` y `Administrador` modelan a las personas. La contraseña en claro no forma parte de esos objetos: el hash lo produce el puerto `CodificadorDeClaves` y lo guarda el repositorio.
+
+`ReglaDeNegocioVioladaException` cubre horario, padrón, candidato inexistente y jornada inválida.
+
+### Puertos de entrada
+
+Cada caso de uso es una interfaz en `aplicacion/puertos/entrada`. Los controladores dependen de estas interfaces.
+
+| Puerto | Responsabilidad |
+|---|---|
+| `IniciarJornadaUseCase` | Abre la jornada del día |
+| `CerrarJornadaUseCase` | Cierra la jornada abierta |
+| `CargarPadronUseCase` | Copia al padrón los códigos habilitados del censo |
+| `EmitirVotoUseCase` | Deposita un voto anónimo y devuelve el recibo |
+| `RegistrarCandidatoUseCase` | Agrega un candidato al tarjetón |
+| `ConsultarJornadaUseCase` | Describe el estado de la jornada |
+| `ConsultarCandidatosUseCase` | Lista el tarjetón |
+| `ConsultarParticipacionUseCase` | Indica si un estudiante ya votó |
+| `ConsultarResultadosUseCase` | Cuenta las papeletas de la urna |
+| `RegistrarVotanteUseCase` | Registra un votante, con o sin verificación contra el censo |
+| `ConsultarVotanteUseCase` | Consulta votantes |
+| `CambiarEstadoVotanteUseCase` | Cambia el estado del votante |
+| `RegistrarAdministradorUseCase` | Registra un administrador |
+| `ConsultarAdministradorUseCase` | Consulta administradores y los activa o desactiva |
+
+`ConsultarVotacionService` implementa las cuatro consultas de la elección. `ConsultarVotanteService` implementa la consulta y el cambio de estado. `RegistrarAdministradorService` implementa el alta y la consulta de administradores. Son un solo objeto por grupo: cada método conserva su nombre propio.
+
+### Puertos de salida
+
+Los servicios piden al exterior solo lo que declaran estas interfaces:
+
+| Puerto | Qué pide la aplicación |
+|---|---|
+| `JornadaRepository` | Leer y guardar la jornada |
+| `PadronRepository` | Reemplazar el padrón y saber si un código está cargado |
+| `ParticipacionRepository` | Buscar por llave, saber si ya votó y guardar la participación |
+| `UrnaRepository` | Depositar la papeleta y escrutar |
+| `CandidatoRepository` | Saber si el candidato existe y listar el tarjetón |
+| `VotanteRepositorio` | Alta, consulta y estado del votante |
+| `AdministradorRepositorio` | Alta, consulta y activación del administrador |
+| `CensoAcademico` | Códigos habilitados y verificación de un código |
+| `Reloj` | La hora con la que se evalúa la jornada |
+| `RegistroDeAuditoria` | `exito` o `fallo` de un `HechoElectoral` |
+| `CodificadorDeClaves` | Hash de la contraseña |
+
+### Servicios de aplicación
+
+Viven en `aplicacion/servicios` y son clases normales, construidas a mano. Orquestan puertos y delegan la regla en el dominio.
+
+`EmitirVotoService` consulta la llave, el padrón, el voto previo y el tarjetón, y llama a `MesaDeVotacion.emitir`. Si la emisión es nueva, guarda la participación y deposita la papeleta. El reintento idempotente se resuelve antes de exigir la jornada, así que la misma llave sigue devolviendo el recibo original después del cierre. Cada resultado se audita: `VOTO_REGISTRADO`, `VOTO_REINTENTO`, `VOTO_DUPLICADO` o `VOTO_RECHAZADO`.
+
+`CargarPadronService` pide al censo la lista de habilitados y la deja en `PadronRepository`. El voto posterior mira ese padrón, no vuelve a llamar al censo.
+
+`RegistrarVotanteService.registrar` deja al votante en `PENDIENTE_VERIFICACION`. `registrarVerificadoEnCenso` lo pasa a `HABILITADO` cuando el censo lo reconoce. El alta HTTP usa el primer método.
+
+### Adaptadores de entrada
+
+Son los controladores de `infraestructura/entrada`. Cada uno traduce HTTP a un caso de uso.
+
+- `VotacionController` (`/api/v1/votaciones`): jornada, padrón, tarjetón, voto, participación y escrutinio. El header `Idempotency-Key` reemplaza la llave del cuerpo. `VotanteYaVotoException` responde 409. `ReglaDeNegocioVioladaException` responde 422.
+- `VotanteController` (`/api/auth/votantes`): alta, consulta y cambio de estado.
+- `AdministradorController` (`/api/auth/administradores`): alta, listado, activación y desactivación.
+- `ManejadorDeErroresHttp` convierte el resto de excepciones de dominio, como el correo duplicado, en 400.
+
+`RegistroAcademicoController` (`/api/academic`) pertenece a `academicmock`. Expone el censo simulado y no es un adaptador del hexágono de votación.
+
+### Adaptadores de salida
+
+Dos juegos implementan los mismos puertos de persistencia. Spring crea uno u otro según el perfil.
+
+**PostgreSQL (`@Profile("postgres")`).** El paquete `salida/jpa` tiene un archivo por concepto. Ahí conviven la entidad, el repositorio de Spring Data y el adaptador que implementa el puerto. `PostgresJpaConfig` limita el escaneo JPA y Spring Data a ese paquete. Los usuarios usan herencia `JOINED`: `usuarios`, `votantes_estudiantes` y `usuarios_administradores`.
+
+**MySQL (`@Profile("mysql")`).** El paquete `salida/mysql` habla por JDBC. `EsquemaMysql` crea las tablas al arrancar. Los `INSERT` usan la forma de MySQL 8 con alias y `ON DUPLICATE KEY UPDATE`.
+
+En ambos perfiles la urna y la participación quedan separadas:
+
+| Dato | Participación (`transacciones_voto_idempotente`) | Papeleta (`papeletas_voto`) |
+|---|---|---|
+| Estudiante | sí | no |
+| Llave de idempotencia | sí | no |
+| Candidato | no | sí |
+| Columna `token_anonimo` | el recibo que se devuelve al votante | un UUID nuevo, distinto del recibo |
+
+La papeleta guarda ese sello para que las dos tablas no se puedan unir por el recibo.
+
+Los demás adaptadores están siempre activos:
+
+- `CensoAcademicoAdaptador` implementa `CensoAcademico` llamando a `AcademicApi`.
+- `CodificadorArgon2` implementa `CodificadorDeClaves`.
+- `RegistroDeAuditoriaAdaptador` traduce el `HechoElectoral` y lo publica en RabbitMQ. Un worker persiste el evento en `auditoria_eventos` con JPA. `AuditoriaJpaConfig` registra solo esa entidad, en los dos perfiles. Si RabbitMQ no responde, el adaptador registra el aviso y la operación de negocio sigue.
+
+Al arrancar, si el tarjetón está vacío, `VotacionConfig` siembra a Carlos Mendoza, Laura Restrepo y el voto en blanco.
+
+### Composición
+
+`VotacionConfig` es la raíz de composición. Crea los servicios, les pasa los puertos y publica los casos de uso como beans. Las escrituras de jornada, padrón, voto, candidato y votante quedan envueltas en `TransactionTemplate` cuando hay un `PlatformTransactionManager`.
+
+El reloj sale de `votacion.reloj`. Sin la propiedad, o con el valor `sistema`, usa la hora real. Un ISO-8601 fijo deja la hora quieta, que es lo que hacen las pruebas.
+
+### Censo académico
+
+`academicmock` simula el sistema externo. Genera un censo de estudiantes habilitados y lo expone por `AcademicApi` y por `/api/academic`. El hexágono no entra a sus servicios internos: solo usa el puerto `CensoAcademico`. Cargar el padrón es un comando explícito. La aplicación no abre la jornada ni copia el censo al iniciar.
+
+### Pruebas de la arquitectura
+
+`ReglasDeVotacionTest` ejercita el dominio sin Spring. `EmitirVotoServiceTest` usa dobles en memoria de los puertos de salida, que viven solo en `src/test` y no son un perfil de producción. `VotacionesEndToEndTest` levanta el adaptador JPA del perfil `postgres` sobre H2, con el reloj fijado a las 10:00 para que la ventana 08:00–16:00 no dependa de la hora en que se corre la prueba.
 
 ---
 
-## 🚀 Requisitos Previos
+## Requisitos
 
-- **Docker Desktop** (con Docker Compose v2+)
-- **Java JDK 21** (opcional si se ejecuta con Docker)
-- **Postman** (o cURL / HTTP Client)
-
----
-
-## 🐳 Ejecución con Docker Compose (Recomendado)
-
-La infraestructura contiene 3 contenedores orquestados:
-1. `votaciones-postgres`: Base de datos PostgreSQL 16 en el puerto `5432`.
-2. `votaciones-rabbitmq`: Broker RabbitMQ 3 en el puerto `5672` (AMQP) y `15672` (Management Web UI).
-3. `votaciones-app`: La aplicación Spring Boot en el puerto `8080`.
-
-### Pasos para iniciar:
-
-```bash
-# 1. Clonar o ubicarse en el directorio del proyecto:
-cd votaciones
-
-# 2. Construir e iniciar todos los contenedores en segundo plano:
-docker compose up -d --build
-
-# 3. Verificar el estado de los contenedores (deben figurar Up / Healthy):
-docker compose ps
-
-# 4. Ver los logs de arranque de la aplicación:
-docker compose logs -f app
-```
-
-Una vez que la aplicación muestre `Started VotacionesApplication in ... seconds`, el sistema estará completamente operativo en `http://localhost:8080`.
-
-### Detener el entorno Docker:
-```bash
-docker compose down
-```
-*(Si desea reiniciar los volúmenes de base de datos limpios, agregue la bandera `-v`: `docker compose down -v`)*.
+- Docker Desktop con Compose v2
+- Java JDK 21, si se ejecuta fuera del contenedor de la aplicación
+- Postman, para la colección incluida
 
 ---
 
-## 💻 Ejecución Local con Gradle (Desarrollo)
+## Cómo ejecutar
 
-Si desea ejecutar la aplicación localmente fuera del contenedor de la aplicación pero usando los servicios de base de datos y mensajería en Docker:
+### Entorno
+
+Compose solo levanta PostgreSQL, MySQL y RabbitMQ. La aplicación se ejecuta aparte, con Gradle.
+
+Desde la carpeta `votaciones`:
 
 ```bash
-# 1. Levantar únicamente PostgreSQL y RabbitMQ:
-docker compose up -d postgres rabbitmq
+docker compose up -d
+```
 
-# 2. Iniciar la aplicación con Gradle:
-# En Linux / macOS:
+PostgreSQL queda en `localhost:5432` (`postgres` / `postgres`, base `votaciones_db`).
+MySQL queda en `localhost:3307` (`votaciones` / `votaciones`, base `votaciones_db`). El contenedor escucha el 3306 por dentro; en el host se publica el 3307 porque el 3306 ya lo usa el MySQL instalado en Windows.
+RabbitMQ queda en `localhost:5672`. El panel está en `http://localhost:15672` (`guest` / `guest`).
+
+### Aplicación con Gradle
+
+Perfil PostgreSQL, que es el predeterminado:
+
+```bash
+# Linux / macOS
 ./gradlew bootRun
 
-# En Windows (PowerShell / CMD):
+# Windows
 .\gradlew.bat bootRun
 ```
 
----
-
-## 🧪 Pruebas Unitarias y End-to-End (E2E)
-
-El proyecto cuenta con un test automatizado End-to-End (`VotacionesEndToEndTest`) que valida el flujo completo entre los 4 módulos manteniendo el encapsulamiento por APIs:
-- **Fase 1**: Verificación de censo oficial con `AcademicApi`.
-- **Fase 2**: Registro y habilitación de administradores y votantes mediante `AuthApi`.
-- **Fase 3**: Rechazo transaccional de votos para estudiantes no autorizados.
-- **Fase 4**: Emisión exitosa de voto, depósito anónimo y soporte de idempotencia.
-- **Fase 5**: Detección y bloqueo inmediato ante intentos de doble voto o fraude.
-- **Fase 6**: Escrutinio independiente de la urna electrónica y consistencia matemática de los votos.
-- **Fase 7**: Simulación completa vía protocolo HTTP REST (MockMvc).
-
-Para ejecutar todas las pruebas automatizadas:
+Perfil MySQL:
 
 ```bash
-# En Linux / macOS:
+# Linux / macOS
+./gradlew bootRun --args="--spring.profiles.active=mysql"
+
+# Windows
+.\gradlew.bat bootRun --args="--spring.profiles.active=mysql"
+```
+
+La aplicación queda en `http://localhost:8080`.
+
+Para detener el entorno:
+
+```bash
+docker compose down
+```
+
+`docker compose down -v` borra también los volúmenes de las bases.
+
+---
+
+## Pruebas
+
+Las pruebas de dominio y de aplicación no levantan PostgreSQL ni MySQL. La prueba de extremo a extremo usa el adaptador JPA sobre H2.
+
+Todas las pruebas:
+
+```bash
+# Linux / macOS
 ./gradlew test
 
-# En Windows:
+# Windows
 .\gradlew.bat test
+```
+
+Solo las unitarias (dominio y caso de uso de emitir voto):
+
+```bash
+# Linux / macOS
+./gradlew test --tests "com.universidad.votaciones.votacion.*"
+
+# Windows
+.\gradlew.bat test --tests "com.universidad.votaciones.votacion.*"
+```
+
+Una clase concreta, el equivalente a `mvn test -Dtest=NombreDeLaClase`:
+
+```bash
+# Linux / macOS
+./gradlew test --tests com.universidad.votaciones.votacion.dominio.ReglasDeVotacionTest
+./gradlew test --tests com.universidad.votaciones.votacion.aplicacion.EmitirVotoServiceTest
+./gradlew test --tests com.universidad.votaciones.e2e.VotacionesEndToEndTest
+
+# Windows
+.\gradlew.bat test --tests com.universidad.votaciones.votacion.dominio.ReglasDeVotacionTest
+.\gradlew.bat test --tests com.universidad.votaciones.votacion.aplicacion.EmitirVotoServiceTest
+.\gradlew.bat test --tests com.universidad.votaciones.e2e.VotacionesEndToEndTest
 ```
 
 ---
 
-## 📬 Entorno de Pruebas en Postman
+## Postman
 
-Se han generado dos archivos listos para importar en Postman:
-1. `votaciones_postman_collection.json`: Colección con todas las peticiones organizadas secuencialmente según el flujo de uso real del sistema electoral, con validaciones automáticas `pm.test` en cada paso.
-2. `votaciones_postman_environment.json`: Entorno con las variables predeterminadas (`baseUrl: http://localhost:8080`, identificadores de prueba, códigos de censo).
+1. Importe `votaciones_postman_collection.json` y `votaciones_postman_environment.json`.
+2. Active el entorno **Votaciones Estudiantiles - Local**.
+3. Ejecute la colección **Sistema de Votaciones Estudiantiles**.
 
-### Cómo importar y ejecutar en Postman:
-1. Abra **Postman**.
-2. Haga clic en **Import** (esquina superior izquierda).
-3. Seleccione los archivos:
-   - `votaciones_postman_collection.json`
-   - `votaciones_postman_environment.json`
-4. Seleccione el entorno activo **"Votaciones Estudiantiles - Local"**.
-5. Para ejecutar la suite completa automáticamente:
-   - Haga clic derecho en la colección **"Sistema de Votaciones Estudiantiles - Monolito Modular E2E"** -> **Run collection**.
-   - Presione **Run**. ¡Todas las pruebas pasarán en verde!
+La jornada solo puede iniciar entre las 08:00 y las 16:00.
 
 ---
 
-## 🗺️ Mapa de Endpoints del Sistema
+## Endpoints
 
-### 1. Salud del Sistema
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/actuator/health` | Estado del servicio, conexión a Postgres y RabbitMQ |
-
-### 2. Módulo Académico (`academicmock`)
-| Método | Ruta | Descripción |
-|---|---|---|
-| `GET` | `/api/academic/estudiantes/{codigo}/validar` | Valida si un estudiante está habilitado en el censo oficial |
-| `GET` | `/api/academic/estudiantes/{codigo}` | Consulta la información académica (nombre, carrera) |
-| `GET` | `/api/academic/estudiantes/cantidad` | Retorna el total de estudiantes en el censo oficial (12.000) |
-
-### 3. Módulo Autenticación y Usuarios (`auth`)
-| Método | Ruta | Descripción |
-|---|---|---|
-| `POST` | `/api/auth/administradores` | Registra un nuevo administrador del sistema electoral |
-| `GET` | `/api/auth/administradores` | Lista los administradores registrados |
-| `POST` | `/api/auth/votantes` | Registra una cuenta de votante para un estudiante del censo |
-| `GET` | `/api/auth/votantes/codigo/{codigo}` | Obtiene los datos del votante |
-| `PATCH`| `/api/auth/votantes/{id}/estado?estado=HABILITADO` | Cambia el estado del votante (`HABILITADO` / `INHABILITADO`) |
-| `GET` | `/api/auth/votantes/habilitado/{codigo}` | Retorna si el estudiante está habilitado para sufragar (`true`/`false`) |
-
-### 4. Módulo de Votación (`voting`)
-| Método | Ruta | Header / Parámetros | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/votaciones/candidatos` | - | Lista los candidatos oficiales del tarjetón |
-| `GET` | `/api/v1/votaciones/estudiante/{id}/ha-votado` | - | Retorna si un estudiante ya ejerció su voto |
-| `POST`| `/api/v1/votaciones/votar` | Header: `Idempotency-Key` | Emite el voto de forma anónima e idempotente |
-| `GET` | `/api/v1/votaciones/resultados` | - | Consulta el escrutinio de la urna anónima |
-
----
-
-## 🛡️ Principios de Seguridad y Resiliencia Implementados
-
-1. **Idempotencia Transaccional con Llave Única**: Cada petición de voto puede incluir un encabezado `Idempotency-Key`. Si la red falla y el cliente reintenta, el sistema detecta la llave previa y devuelve exactamente el mismo recibo sin sumar un voto extra a la urna.
-2. **Desacoplamiento Criptográfico de la Urna**: Las tablas `transacciones_voto_idempotente` (que guardan el estudiante para evitar que vote dos veces) y `papeletas_voto` (que guardan el voto por el candidato en la urna) están totalmente separadas. No existe llave foránea ni vínculo entre el estudiante y el candidato que eligió.
-3. **Hashing Robusto**: Credenciales protegidas mediante `Argon2PasswordEncoder` con BouncyCastle.
-4. **Mensajería con Dead-Letter Queue (DLQ)**: En caso de que un mensaje de auditoría falle al procesarse, es enrutado automáticamente a la cola de reintentos / fallos `auditoria.eventos.dlq`.
+| `GET` | `/actuator/health` | Salud de la aplicación |
+| `GET` | `/api/academic/estudiantes/{codigo}/validar` | Valida el estudiante en el censo |
+| `GET` | `/api/academic/estudiantes/{codigo}` | Ficha del estudiante |
+| `GET` | `/api/academic/estudiantes/cantidad` | Total del censo |
+| `POST` | `/api/auth/administradores` | Registra un administrador |
+| `GET` | `/api/auth/administradores` | Lista administradores |
+| `GET` | `/api/auth/administradores/activos` | Lista administradores activos |
+| `POST` | `/api/auth/votantes` | Registra un votante |
+| `GET` | `/api/auth/votantes/codigo/{codigo}` | Consulta un votante por código |
+| `PATCH` | `/api/auth/votantes/{id}/estado?estado=HABILITADO` | Cambia el estado del votante |
+| `GET` | `/api/auth/votantes/habilitado/{codigo}` | Indica si el votante está habilitado |
+| `POST` | `/api/v1/votaciones/padron/cargar` | Carga el padrón desde el censo |
+| `POST` | `/api/v1/votaciones/jornada/iniciar` | Abre la jornada |
+| `POST` | `/api/v1/votaciones/jornada/cerrar` | Cierra la jornada |
+| `GET` | `/api/v1/votaciones/jornada` | Consulta la jornada |
+| `GET` | `/api/v1/votaciones/candidatos` | Lista el tarjetón |
+| `POST` | `/api/v1/votaciones/votar` | Emite un voto. Acepta el header `Idempotency-Key` |
+| `GET` | `/api/v1/votaciones/estudiante/{id}/ha-votado` | Indica si el estudiante ya votó |
+| `GET` | `/api/v1/votaciones/resultados` | Escrutinio de la urna |
